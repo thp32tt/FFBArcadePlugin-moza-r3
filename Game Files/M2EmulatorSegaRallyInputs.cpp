@@ -77,8 +77,56 @@ static int Shift4ButtonDevice2 = GetPrivateProfileInt(TEXT("Settings"), TEXT("Sh
 static int ShiftUpButtonDevice2 = GetPrivateProfileInt(TEXT("Settings"), TEXT("ShiftUpButtonDevice2"), 0, settingsFilename);
 static int ShiftDownButtonDevice2 = GetPrivateProfileInt(TEXT("Settings"), TEXT("ShiftDownButtonDevice2"), 0, settingsFilename);
 
+static DWORD lastSegaRallyInputSettingsReload = 0;
+
+static void ReloadSegaRallyInputSettings()
+{
+	InputDeviceWheelEnable = GetPrivateProfileInt(TEXT("Settings"), TEXT("InputDeviceWheelEnable"), 0, settingsFilename);
+	InputDeviceWheelSteeringAxis = GetPrivateProfileInt(TEXT("Settings"), TEXT("InputDeviceWheelSteeringAxis"), 0, settingsFilename);
+	InputDeviceWheelAcclAxis = GetPrivateProfileInt(TEXT("Settings"), TEXT("InputDeviceWheelAcclAxis"), 0, settingsFilename);
+	InputDeviceWheelBrakeAxis = GetPrivateProfileInt(TEXT("Settings"), TEXT("InputDeviceWheelBrakeAxis"), 0, settingsFilename);
+	InputDeviceWheelSteeringAxisDevice2 = GetPrivateProfileInt(TEXT("Settings"), TEXT("InputDeviceWheelSteeringAxisDevice2"), 0, settingsFilename);
+	InputDeviceWheelAcclAxisDevice2 = GetPrivateProfileInt(TEXT("Settings"), TEXT("InputDeviceWheelAcclAxisDevice2"), 0, settingsFilename);
+	InputDeviceWheelBrakeAxisDevice2 = GetPrivateProfileInt(TEXT("Settings"), TEXT("InputDeviceWheelBrakeAxisDevice2"), 0, settingsFilename);
+	InputDeviceWheelReverseAxis = GetPrivateProfileInt(TEXT("Settings"), TEXT("InputDeviceWheelReverseAxis"), 0, settingsFilename);
+	InputDeviceCombinedPedals = GetPrivateProfileInt(TEXT("Settings"), TEXT("InputDeviceCombinedPedals"), 0, settingsFilename);
+	SteeringDeadzone = GetPrivateProfileInt(TEXT("Settings"), TEXT("SteeringDeadzone"), 0, settingsFilename);
+	PedalDeadzone = GetPrivateProfileInt(TEXT("Settings"), TEXT("PedalDeadzone"), 0, settingsFilename);
+	ShowButtonNumbersForSetup = GetPrivateProfileInt(TEXT("Settings"), TEXT("ShowButtonNumbersForSetup"), 0, settingsFilename);
+	ShowKeyBoardNameForSetup = GetPrivateProfileInt(TEXT("Settings"), TEXT("ShowKeyBoardNameForSetup"), 0, settingsFilename);
+	ShowAxisForSetup = GetPrivateProfileInt(TEXT("Settings"), TEXT("ShowAxisForSetup"), 0, settingsFilename);
+	ExitButton = GetPrivateProfileInt(TEXT("Settings"), TEXT("ExitButton"), 0, settingsFilename);
+	TestButton = GetPrivateProfileInt(TEXT("Settings"), TEXT("TestButton"), 0, settingsFilename);
+	ServiceButton = GetPrivateProfileInt(TEXT("Settings"), TEXT("ServiceButton"), 0, settingsFilename);
+	Coin1Button = GetPrivateProfileInt(TEXT("Settings"), TEXT("Coin1Button"), 0, settingsFilename);
+	Coin2Button = GetPrivateProfileInt(TEXT("Settings"), TEXT("Coin2Button"), 0, settingsFilename);
+	VR1Button = GetPrivateProfileInt(TEXT("Settings"), TEXT("VR1Button"), 0, settingsFilename);
+	StartButton = GetPrivateProfileInt(TEXT("Settings"), TEXT("StartButton"), 0, settingsFilename);
+	Shift1Button = GetPrivateProfileInt(TEXT("Settings"), TEXT("Shift1Button"), 0, settingsFilename);
+	Shift2Button = GetPrivateProfileInt(TEXT("Settings"), TEXT("Shift2Button"), 0, settingsFilename);
+	Shift3Button = GetPrivateProfileInt(TEXT("Settings"), TEXT("Shift3Button"), 0, settingsFilename);
+	Shift4Button = GetPrivateProfileInt(TEXT("Settings"), TEXT("Shift4Button"), 0, settingsFilename);
+	ShiftUpButton = GetPrivateProfileInt(TEXT("Settings"), TEXT("ShiftUpButton"), 0, settingsFilename);
+	ShiftDownButton = GetPrivateProfileInt(TEXT("Settings"), TEXT("ShiftDownButton"), 0, settingsFilename);
+	ExitButtonDevice2 = GetPrivateProfileInt(TEXT("Settings"), TEXT("ExitButtonDevice2"), 0, settingsFilename);
+	TestButtonDevice2 = GetPrivateProfileInt(TEXT("Settings"), TEXT("TestButtonDevice2"), 0, settingsFilename);
+	ServiceButtonDevice2 = GetPrivateProfileInt(TEXT("Settings"), TEXT("ServiceButtonDevice2"), 0, settingsFilename);
+	Coin1ButtonDevice2 = GetPrivateProfileInt(TEXT("Settings"), TEXT("Coin1ButtonDevice2"), 0, settingsFilename);
+	Coin2ButtonDevice2 = GetPrivateProfileInt(TEXT("Settings"), TEXT("Coin2ButtonDevice2"), 0, settingsFilename);
+	VR1ButtonDevice2 = GetPrivateProfileInt(TEXT("Settings"), TEXT("VR1ButtonDevice2"), 0, settingsFilename);
+	StartButtonDevice2 = GetPrivateProfileInt(TEXT("Settings"), TEXT("StartButtonDevice2"), 0, settingsFilename);
+	Shift1ButtonDevice2 = GetPrivateProfileInt(TEXT("Settings"), TEXT("Shift1ButtonDevice2"), 0, settingsFilename);
+	Shift2ButtonDevice2 = GetPrivateProfileInt(TEXT("Settings"), TEXT("Shift2ButtonDevice2"), 0, settingsFilename);
+	Shift3ButtonDevice2 = GetPrivateProfileInt(TEXT("Settings"), TEXT("Shift3ButtonDevice2"), 0, settingsFilename);
+	Shift4ButtonDevice2 = GetPrivateProfileInt(TEXT("Settings"), TEXT("Shift4ButtonDevice2"), 0, settingsFilename);
+	ShiftUpButtonDevice2 = GetPrivateProfileInt(TEXT("Settings"), TEXT("ShiftUpButtonDevice2"), 0, settingsFilename);
+	ShiftDownButtonDevice2 = GetPrivateProfileInt(TEXT("Settings"), TEXT("ShiftDownButtonDevice2"), 0, settingsFilename);
+}
+
 void M2EmulatorSegaRallyInputsEnabled(Helpers* helpers)
 {
+	ReloadSegaRallyInputSettings();
+	lastSegaRallyInputSettingsReload = GetTickCount();
 	if (!Inputsinit)
 	{
 		//Added 2nd device stuff from here
@@ -236,6 +284,13 @@ void M2EmulatorSegaRallyInputsEnabled(Helpers* helpers)
 
 	while (SDL_WaitEvent(&e) != 0)
 	{
+		const DWORD inputNow = GetTickCount();
+		if (inputNow - lastSegaRallyInputSettingsReload >= 1000)
+		{
+			ReloadSegaRallyInputSettings();
+			lastSegaRallyInputSettingsReload = inputNow;
+		}
+
 		UINT8 button1read = helpers->ReadByte(Button1Address, false);
 		UINT8 button2read = helpers->ReadByte(Button2Address, false);
 
@@ -533,7 +588,7 @@ void M2EmulatorSegaRallyInputsEnabled(Helpers* helpers)
 		{
 			if (e.type == SDL_JOYBUTTONDOWN)
 			{
-				if (e.jaxis.which == joystick_index1 || e.jaxis.which == joystick_index2)
+				if (e.jbutton.which == joystick_index1 || e.jbutton.which == joystick_index2)
 				{
 					if (e.jbutton.button >= 0)
 					{

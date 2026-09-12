@@ -86,6 +86,7 @@ static bool model2Suspended = false;
 static DWORD model2ResumeAt = 0;
 static DWORD model2LastTelemetry = 0;
 static UINT8 model2LastRaw = 0;
+static UINT8 model2LastObservedSegaRallyRaw = 0xFF;
 static unsigned int model2Capabilities = 0;
 static bool model2CapabilitiesLogged = false;
 
@@ -835,6 +836,14 @@ static void Model2ModernObserveReadByte(INT_PTR offset, bool isRelativeOffset, U
 
     if (isRelativeOffset && offset == 0x174CF4)
     {
+        if (model2Global.telemetry && value != model2LastObservedSegaRallyRaw)
+        {
+            model2LastObservedSegaRallyRaw = value;
+            std::ostringstream os;
+            os << "srally-raw tick=" << GetTickCount()
+               << " value=0x" << std::hex << static_cast<int>(value) << std::dec;
+            Model2LogLine(os.str());
+        }
         Model2ProcessSegaRally(value);
         return;
     }

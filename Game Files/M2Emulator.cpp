@@ -212,24 +212,24 @@ static DWORD jmpBackAddy;
 
 char* romnameM2;
 
-static int ThreadLoop()
+static int ThreadLoop(Helpers* helpers)
 {
 	if (hWnd1 > NULL || hWnd14 > NULL || hWnd15 > NULL)
 	{
 		if (InputDeviceWheelEnable)
-			M2EmulatorSegaRallyInputsEnabled(0);
+			M2EmulatorSegaRallyInputsEnabled(helpers);
 	}
 	
 	if (hWnd2 > NULL || hWnd7 > NULL || hWnd8 > NULL || hWnd9 > NULL || hWnd10 > NULL || hWnd11 > NULL || hWnd12 > NULL || hWnd13 > NULL)
 	{
 		if (InputDeviceWheelEnable)
-			M2EmulatorDaytonaUSAInputsEnabled(0);
+			M2EmulatorDaytonaUSAInputsEnabled(helpers);
 	}
 
 	if (hWnd3 > NULL || hWnd4 > NULL || hWnd5 > NULL || hWnd6 > NULL || hWnd16 > NULL || hWnd17 > NULL || hWnd18 > NULL || hWnd19 > NULL || hWnd20 > NULL)
 	{
 		if (InputDeviceWheelEnable)
-			M2EmulatorIndy500InputsEnabled(0);
+			M2EmulatorIndy500InputsEnabled(helpers);
 	}
 	return 0;
 }
@@ -238,12 +238,15 @@ static DWORD WINAPI InputLoop(LPVOID lpParam)
 {
 	while (true)
 	{
-		ThreadLoop();
+		ThreadLoop(static_cast<Helpers*>(lpParam));
 		Sleep(16);
 	}
 }
 
 void M2Emulator::FFBLoop(EffectConstants * constants, Helpers * helpers, EffectTriggers * triggers) {
+
+	// Input Support can be changed by FFBPluginGUI; do not keep the DLL-load snapshot.
+	InputDeviceWheelEnable = GetPrivateProfileInt(TEXT("Settings"), TEXT("InputDeviceWheelEnable"), 0, settingsFilename);
 
 	hWnd1 = FindWindowA(0, ("Sega Rally Championship"));
 	hWnd2 = FindWindowA(0, ("Daytona USA"));
@@ -420,10 +423,9 @@ void M2Emulator::FFBLoop(EffectConstants * constants, Helpers * helpers, EffectT
 		}		
 	}
 
-	if (!inputinit)
+	if (!inputinit && InputDeviceWheelEnable)
 	{
-		if (InputDeviceWheelEnable)
-			CreateThread(NULL, 0, InputLoop, NULL, 0, NULL);
+		CreateThread(NULL, 0, InputLoop, helpers, 0, NULL);
 		inputinit = true;
 	}
 
