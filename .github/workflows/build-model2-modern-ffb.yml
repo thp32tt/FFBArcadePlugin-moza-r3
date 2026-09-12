@@ -76,47 +76,47 @@ jobs:
           }
 
           if ($ini -notmatch '(?m)^\[Model2Modern\]$') {
-            $v2 = @"
-
-[Model2Modern]
-Enabled=1
-ConstantGain=100
-SpringGain=45
-FrictionGain=35
-PeriodicGain=30
-RumbleGain=20
-Gamma=100
-BuildRate=18
-ReversalReleaseRate=40
-SoftClipKnee=75
-SoftClipLimit=135
-InvertConstant=0
-InvertSpring=0
-PeriodicMode=0
-ConditionMode=0
-FocusSafety=1
-CommandLeaseMs=180
-Telemetry=0
-
-[Model2Modern.SegaRally]
-ConstantGain=100
-
-[Model2Modern.Daytona]
-ConstantGain=100
-
-[Model2Modern.Indy500]
-ConstantGain=100
-
-[Model2Modern.STCC]
-ConstantGain=100
-
-[Model2Modern.OverRev]
-ConstantGain=100
-
-[Model2Modern.SuperGT]
-ConstantGain=100
-"@
-            $ini = $ini.TrimEnd() + "`r`n" + $v2.TrimStart()
+            $v2Lines = @(
+              '',
+              '[Model2Modern]',
+              'Enabled=1',
+              'ConstantGain=100',
+              'SpringGain=45',
+              'FrictionGain=35',
+              'PeriodicGain=30',
+              'RumbleGain=20',
+              'Gamma=100',
+              'BuildRate=18',
+              'ReversalReleaseRate=40',
+              'SoftClipKnee=75',
+              'SoftClipLimit=135',
+              'InvertConstant=0',
+              'InvertSpring=0',
+              'PeriodicMode=0',
+              'ConditionMode=0',
+              'FocusSafety=1',
+              'CommandLeaseMs=180',
+              'Telemetry=0',
+              '',
+              '[Model2Modern.SegaRally]',
+              'ConstantGain=100',
+              '',
+              '[Model2Modern.Daytona]',
+              'ConstantGain=100',
+              '',
+              '[Model2Modern.Indy500]',
+              'ConstantGain=100',
+              '',
+              '[Model2Modern.STCC]',
+              'ConstantGain=100',
+              '',
+              '[Model2Modern.OverRev]',
+              'ConstantGain=100',
+              '',
+              '[Model2Modern.SuperGT]',
+              'ConstantGain=100'
+            )
+            $ini = $ini.TrimEnd() + "`r`n" + ($v2Lines -join "`r`n") + "`r`n"
           }
 
           [System.IO.File]::WriteAllText((Resolve-Path $iniPath), $ini)
