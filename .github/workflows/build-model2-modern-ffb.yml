@@ -32,6 +32,19 @@ jobs:
       - name: Restore NuGet packages
         run: nuget restore Dinput8Wrapper.sln -NonInteractive
 
+      - name: Patch upstream missing Cars source entry
+        shell: pwsh
+        run: |
+          $projectPath = 'Dinput8Wrapper.vcxproj'
+          $project = Get-Content $projectPath -Raw
+          if ($project -notmatch 'Game Files\\Cars\.cpp') {
+            $needle = '    <ClCompile Include="Game Files\CrazyTaxi.cpp" />'
+            $replacement = $needle + "`r`n" + '    <ClCompile Include="Game Files\Cars.cpp" />'
+            if (-not $project.Contains($needle)) { throw 'Could not locate insertion point for Cars.cpp' }
+            $project = $project.Replace($needle, $replacement)
+            [System.IO.File]::WriteAllText((Resolve-Path $projectPath), $project)
+          }
+
       - name: Build Win32 Release
         run: msbuild Dinput8Wrapper.sln /m /p:Configuration=Release /p:Platform=x86 /verbosity:minimal
 
