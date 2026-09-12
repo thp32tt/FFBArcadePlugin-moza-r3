@@ -103,7 +103,7 @@ jobs:
           for f in dinput8.dll SDL2.dll FFBPlugin.ini FFBPluginGUI.exe MetroFramework.dll MODEL2_MODERN_FFB.md README-GENERIC-DD.txt; do
             test -f "Package.Model2.GenericDD/${f}"
           done
-          grep -qE '^\[Model2Modern\]\r?$' Package.Model2.GenericDD/FFBPlugin.ini
+          tr -d '\r' < Package.Model2.GenericDD/FFBPlugin.ini | grep -qFx '[Model2Modern]'
           file Package.Model2.GenericDD/dinput8.dll Package.Model2.GenericDD/FFBPluginGUI.exe
           find Package.Model2.GenericDD -maxdepth 2 -type f -printf '%P\n' | sort
 
