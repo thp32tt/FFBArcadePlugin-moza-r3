@@ -1,0 +1,110 @@
+name: Apply Model 2 input and diagnostics patch
+
+on:
+  push:
+    branches:
+      - model2-modern-ffb-v2
+    paths:
+      - '.github/workflows/apply-model2-input-diagnostics.yml'
+
+permissions:
+  contents: write
+
+jobs:
+  patch:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+
+      - name: Patch Model 2 input path and Sega Rally diagnostics
+        shell: python
+        run: |
+          from pathlib import Path
+          import re
+
+          # 1) Keep the real Helpers pointer in the Model 2 input worker and allow
+          #    Input Support to be read from the current INI instead of only DLL load.
+          p = Path('Game Files/M2Emulator.cpp')
+          s = p.read_text(encoding='utf-8')
+          s = s.replace('static int ThreadLoop()\n{', 'static int ThreadLoop(Helpers* helpers)\n{')
+          s = s.replace('M2EmulatorSegaRallyInputsEnabled(0);', 'M2EmulatorSegaRallyInputsEnabled(helpers);')
+          s = s.replace('M2EmulatorDaytonaUSAInputsEnabled(0);', 'M2EmulatorDaytonaUSAInputsEnabled(helpers);')
+          s = s.replace('M2EmulatorIndy500InputsEnabled(0);', 'M2EmulatorIndy500InputsEnabled(helpers);')
+          s = s.replace('ThreadLoop();', 'ThreadLoop(static_cast<Helpers*>(lpParam));')
+
+          marker = 'void M2Emulator::FFBLoop(EffectConstants * constants, Helpers * helpers, EffectTriggers * triggers) {\n\n'
+          if 'Input Support can be changed by FFBPluginGUI' not in s:
+              assert marker in s
+              s = s.replace(marker, marker + '\t// Input Support can be changed by FFBPluginGUI; do not keep the DLL-load snapshot.\n\tInputDeviceWheelEnable = GetPrivateProfileInt(TEXT("Settings"), TEXT("InputDeviceWheelEnable"), 0, settingsFilename);\n\n', 1)
+
+          old = '''\tif (!inputinit)\n\t{\n\t\tif (InputDeviceWheelEnable)\n\t\t\tCreateThread(NULL, 0, InputLoop, NULL, 0, NULL);\n\t\tinputinit = true;\n\t}'''
+          new = '''\tif (!inputinit && InputDeviceWheelEnable)\n\t{\n\t\tCreateThread(NULL, 0, InputLoop, helpers, 0, NULL);\n\t\tinputinit = true;\n\t}'''
+          assert old in s
+          s = s.replace(old, new, 1)
+          p.write_text(s, encoding='utf-8', newline='\n')
+
+          # 2) Refresh Sega Rally axis/button mappings at startup and once per second.
+          #    Upstream stores these as static DLL-load snapshots, so GUI changes can
+          #    otherwise appear to save correctly but never reach the running input loop.
+          p = Path('Game Files/M2EmulatorSegaRallyInputs.cpp')
+          s = p.read_text(encoding='utf-8')
+          fn_marker = 'void M2EmulatorSegaRallyInputsEnabled(Helpers* helpers)\n'
+          if 'ReloadSegaRallyInputSettings' not in s:
+              prefix, suffix = s.split(fn_marker, 1)
+              matches = re.findall(r'^static int (\w+) = (GetPrivateProfileInt\([^\n]+\));$', prefix, re.M)
+              assert len(matches) >= 30, f'expected Model 2 input settings, got {len(matches)}'
+              body = ['static DWORD lastSegaRallyInputSettingsReload = 0;', '', 'static void ReloadSegaRallyInputSettings()', '{']
+              for name, rhs in matches:
+                  body.append(f'\t{name} = {rhs};')
+              body += ['}', '']
+              s = prefix + '\n'.join(body) + '\n' + fn_marker + suffix
+
+          start_marker = 'void M2EmulatorSegaRallyInputsEnabled(Helpers* helpers)\n{\n'
+          if '\tReloadSegaRallyInputSettings();\n\tlastSegaRallyInputSettingsReload = GetTickCount();\n' not in s:
+              assert start_marker in s
+              s = s.replace(start_marker, start_marker + '\tReloadSegaRallyInputSettings();\n\tlastSegaRallyInputSettingsReload = GetTickCount();\n', 1)
+
+          wait_marker = '\twhile (SDL_WaitEvent(&e) != 0)\n\t{\n\t\tUINT8 button1read'
+          wait_repl = '\twhile (SDL_WaitEvent(&e) != 0)\n\t{\n\t\tconst DWORD inputNow = GetTickCount();\n\t\tif (inputNow - lastSegaRallyInputSettingsReload >= 1000)\n\t\t{\n\t\t\tReloadSegaRallyInputSettings();\n\t\t\tlastSegaRallyInputSettingsReload = inputNow;\n\t\t}\n\n\t\tUINT8 button1read'
+          if 'const DWORD inputNow = GetTickCount();' not in s:
+              assert wait_marker in s
+              s = s.replace(wait_marker, wait_repl, 1)
+
+          # Correct the SDL union member used by the button-number setup helper.
+          s = s.replace('if (e.jaxis.which == joystick_index1 || e.jaxis.which == joystick_index2)\n\t\t\t\t{\n\t\t\t\t\tif (e.jbutton.button >= 0)',
+                        'if (e.jbutton.which == joystick_index1 || e.jbutton.which == joystick_index2)\n\t\t\t\t{\n\t\t\t\t\tif (e.jbutton.button >= 0)', 1)
+          p.write_text(s, encoding='utf-8', newline='\n')
+
+          # 3) When telemetry is enabled, log every changed Sega Rally raw drive-board
+          #    byte, including values outside the currently decoded left/right ranges.
+          p = Path('Common Files/Game.cpp')
+          s = p.read_text(encoding='utf-8')
+          state_marker = 'static UINT8 model2LastRaw = 0;\n'
+          if 'model2LastObservedSegaRallyRaw' not in s:
+              assert state_marker in s
+              s = s.replace(state_marker, state_marker + 'static UINT8 model2LastObservedSegaRallyRaw = 0xFF;\n', 1)
+
+          observe_marker = '''    if (isRelativeOffset && offset == 0x174CF4)\n    {\n        Model2ProcessSegaRally(value);\n        return;\n    }'''
+          observe_repl = '''    if (isRelativeOffset && offset == 0x174CF4)\n    {\n        if (model2Global.telemetry && value != model2LastObservedSegaRallyRaw)\n        {\n            model2LastObservedSegaRallyRaw = value;\n            std::ostringstream os;\n            os << "srally-raw tick=" << GetTickCount()\n               << " value=0x" << std::hex << static_cast<int>(value) << std::dec;\n            Model2LogLine(os.str());\n        }\n        Model2ProcessSegaRally(value);\n        return;\n    }'''
+          if 'srally-raw tick=' not in s:
+              assert observe_marker in s
+              s = s.replace(observe_marker, observe_repl, 1)
+          p.write_text(s, encoding='utf-8', newline='\n')
+
+          # 4) The official Model 2 runtime only ships MetroFramework.dll. Do not fail
+          #    future complete builds on GUI design-time assemblies that are not shipped.
+          p = Path('.github/workflows/build-model2-modern-ffb.yml')
+          s = p.read_text(encoding='utf-8')
+          s = s.replace("            'MetroFramework.dll','MetroFramework.Fonts.dll','MetroFramework.Design.dll',\n", "            'MetroFramework.dll',\n")
+          p.write_text(s, encoding='utf-8', newline='\n')
+
+      - name: Commit patch
+        run: |
+          git config user.name "github-actions[bot]"
+          git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
+          git add "Game Files/M2Emulator.cpp" "Game Files/M2EmulatorSegaRallyInputs.cpp" "Common Files/Game.cpp" .github/workflows/build-model2-modern-ffb.yml
+          git diff --cached --check
+          git commit -m "Fix Model 2 Sega Rally input mapping and add collision telemetry"
+          git push origin HEAD:model2-modern-ffb-v2
