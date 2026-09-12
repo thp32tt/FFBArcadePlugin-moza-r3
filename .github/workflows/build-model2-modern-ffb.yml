@@ -8,7 +8,7 @@ on:
   workflow_dispatch:
 
 permissions:
-  contents: write
+  contents: read
 
 jobs:
   build-win32-release:
@@ -17,65 +17,6 @@ jobs:
     steps:
       - name: Checkout
         uses: actions/checkout@v4
-
-      - name: Normalize generic DD v2 source
-        if: github.ref_name == 'model2-modern-ffb-v2'
-        shell: pwsh
-        run: |
-          $sourcePath = 'Common Files\Game.cpp'
-          $source = Get-Content $sourcePath -Raw
-          $changed = $false
-
-          if ($source -notmatch '(?m)^#define NOMINMAX$') {
-            $source = $source.Replace('#include <Windows.h>', "#ifndef NOMINMAX`r`n#define NOMINMAX`r`n#endif`r`n#include <Windows.h>")
-            $changed = $true
-          }
-
-          $old = @(
-            '    case M2CMD_UNCENTERING:',
-            '        if (Model2NativePeriodicAvailable())',
-            '            Model2OutputNativePeriodic(strength);',
-            '        else',
-            '            Model2OutputPeriodicFallback(strength);',
-            '        Model2OutputRumble(strength, strength);',
-            '        break;'
-          ) -join "`n"
-          $new = @(
-            '    case M2CMD_UNCENTERING:',
-            '        if (model2Global.periodicMode == 2)',
-            '        {',
-            '            // Forced generic ConstantForce pulse mode. No vendor detection.',
-            '            Model2OutputPeriodicFallback(strength);',
-            '        }',
-            '        else if (model2Global.periodicMode != 3)',
-            '        {',
-            '            if (Model2NativePeriodicAvailable())',
-            '                Model2OutputNativePeriodic(strength);',
-            '            else if (model2Global.periodicMode == 0)',
-            '                Model2OutputPeriodicFallback(strength);',
-            '            // periodicMode == 1 is Native-only: do not silently fall back.',
-            '        }',
-            '        Model2OutputRumble(strength, strength);',
-            '        break;'
-          ) -join "`n"
-
-          $normalized = $source -replace "`r`n", "`n"
-          if ($normalized.Contains($old)) {
-            $normalized = $normalized.Replace($old, $new)
-            $source = $normalized -replace "`n", "`r`n"
-            $changed = $true
-          }
-
-          if ($changed) {
-            [System.IO.File]::WriteAllText((Resolve-Path $sourcePath), $source)
-            git config user.name 'github-actions[bot]'
-            git config user.email '41898282+github-actions[bot]@users.noreply.github.com'
-            git add -- "$sourcePath"
-            if (-not (git diff --cached --quiet)) {
-              git commit -m '[skip ci] Fix generic DD v2 MSVC and periodic mode semantics'
-              git push origin HEAD:model2-modern-ffb-v2
-            }
-          }
 
       - name: Setup MSBuild
         uses: microsoft/setup-msbuild@v2
