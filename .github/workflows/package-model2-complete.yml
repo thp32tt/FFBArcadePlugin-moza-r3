@@ -1,0 +1,113 @@
+name: Package Model 2 Generic DD Complete
+
+on:
+  push:
+    branches:
+      - model2-modern-ffb-v2
+    paths:
+      - '.github/workflows/package-model2-complete.yml'
+  workflow_dispatch:
+
+permissions:
+  contents: read
+  actions: read
+
+jobs:
+  package:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Download verified Generic DD v2 build artifact
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          set -euxo pipefail
+          curl -L --fail --retry 3 \
+            -H "Authorization: Bearer ${GH_TOKEN}" \
+            -H "Accept: application/vnd.github+json" \
+            -o /tmp/generic-dd.zip \
+            "https://api.github.com/repos/${GITHUB_REPOSITORY}/actions/artifacts/10298284137/zip"
+          mkdir -p /tmp/generic-dd
+          unzip -q /tmp/generic-dd.zip -d /tmp/generic-dd
+          test -f /tmp/generic-dd/dinput8.dll
+          test -f /tmp/generic-dd/FFBPlugin.ini
+
+      - name: Download official upstream 2.0.0.53 distribution
+        run: |
+          set -euxo pipefail
+          curl -L --fail --retry 3 \
+            -o /tmp/upstream53.zip \
+            "https://github.com/Boomslangnz/FFBArcadePlugin/releases/download/2.0.0.53/FFB.Arcade.Plugin.v2.0.0.53.zip"
+          mkdir -p /tmp/upstream53
+          unzip -q /tmp/upstream53.zip -d /tmp/upstream53
+
+      - name: Assemble complete package from official Model 2 baseline
+        run: |
+          set -euxo pipefail
+          rm -rf Package.Model2.GenericDD
+          mkdir -p Package.Model2.GenericDD
+
+          M2_INI="$(grep -RIl --include='FFBPlugin.ini' -E '^\s*GameId\s*=\s*25\s*\r?$' /tmp/upstream53 | head -n 1)"
+          test -n "${M2_INI}"
+          M2_DIR="$(dirname "${M2_INI}")"
+          echo "Official Model 2 baseline: ${M2_DIR}"
+          cp -a "${M2_DIR}/." Package.Model2.GenericDD/
+
+          # Some releases keep GUI assets at a shared parent level. Fill any missing
+          # GUI/runtime companions from the official archive without altering them.
+          for name in FFBPluginGUI.exe FFBPluginGUI.exe.config MetroFramework.dll MetroFramework.Fonts.dll MetroFramework.Design.dll; do
+            if [ ! -f "Package.Model2.GenericDD/${name}" ]; then
+              src="$(find /tmp/upstream53 -type f -iname "${name}" | head -n 1 || true)"
+              if [ -n "${src}" ]; then cp -f "${src}" "Package.Model2.GenericDD/${name}"; fi
+            fi
+          done
+
+          # Overlay the previously MSVC-verified Generic DD v2 output.
+          cp -f /tmp/generic-dd/dinput8.dll Package.Model2.GenericDD/dinput8.dll
+          cp -f /tmp/generic-dd/SDL2.dll Package.Model2.GenericDD/SDL2.dll
+          cp -f /tmp/generic-dd/FFBPlugin.ini Package.Model2.GenericDD/FFBPlugin.ini
+          if [ -f /tmp/generic-dd/FFBPluginReadme.txt ]; then cp -f /tmp/generic-dd/FFBPluginReadme.txt Package.Model2.GenericDD/; fi
+          cp -f MODEL2_MODERN_FFB.md Package.Model2.GenericDD/
+          if [ -f LICENSE ]; then cp -f LICENSE Package.Model2.GenericDD/LICENSE-FFBArcadePlugin.txt; fi
+
+          cat > Package.Model2.GenericDD/README-GENERIC-DD.txt <<'EOF'
+          Model 2 Modern FFB - Generic DD Complete Package
+
+          Baseline runtime/GUI files: official FFB Arcade Plugin 2.0.0.53 Model 2 distribution.
+          Generic DD v2 overlay: dinput8.dll, SDL2.dll and FFBPlugin.ini from the verified v2 build.
+
+          INSTALL
+          Copy every file/folder in this package next to emulator_multicpu.exe.
+
+          INPUT SETUP
+          Run FFBPluginGUI.exe, select Model 2 Emulator, enable Input Support,
+          then map steering, pedals and buttons in FFBPluginGUI.
+          When Input Support is enabled, do not use Model 2 native Configure Controls
+          for wheel buttons.
+
+          Runtime requirements: Microsoft Visual C++ 2019/2022 Redistributable x86
+          and .NET Framework 4.7.2 or later for FFBPluginGUI.
+
+          Generic DD tuning is in [Model2Modern]. Set Telemetry=1 for raw FFB diagnostics.
+          EOF
+          sed -i 's/^          //' Package.Model2.GenericDD/README-GENERIC-DD.txt
+
+      - name: Verify complete package
+        run: |
+          set -euxo pipefail
+          for f in dinput8.dll SDL2.dll FFBPlugin.ini FFBPluginGUI.exe MetroFramework.dll MetroFramework.Fonts.dll MetroFramework.Design.dll MODEL2_MODERN_FFB.md README-GENERIC-DD.txt; do
+            test -f "Package.Model2.GenericDD/${f}"
+          done
+          grep -qE '^\[Model2Modern\]\r?$' Package.Model2.GenericDD/FFBPlugin.ini
+          file Package.Model2.GenericDD/dinput8.dll Package.Model2.GenericDD/FFBPluginGUI.exe
+          find Package.Model2.GenericDD -maxdepth 2 -type f -printf '%P\n' | sort
+
+      - name: Upload complete package
+        uses: actions/upload-artifact@v4
+        with:
+          name: Model2-Modern-FFB-Generic-DD-Complete-Win32
+          path: Package.Model2.GenericDD/
+          if-no-files-found: error
+          retention-days: 30
