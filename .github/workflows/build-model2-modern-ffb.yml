@@ -57,16 +57,18 @@ jobs:
           if ($LASTEXITCODE -ne 0) { throw 'Failed to download official upstream package' }
           Expand-Archive -Path $zip -DestinationPath $dst -Force
 
-      - name: Assemble minimal Model 2 Generic DD runtime
+      - name: Assemble full official-style Model 2 package
         shell: pwsh
         run: |
           $built = Resolve-Path 'Release.Win32\M2Emulator'
           $upstream = Join-Path $env:RUNNER_TEMP 'FFBArcadePlugin-Upstream'
-          $stage = Join-Path $env:GITHUB_WORKSPACE 'Package.Model2.GenericDD.Minimal'
+          $stage = Join-Path $env:GITHUB_WORKSPACE 'Package.Model2.GenericDD.Full'
           New-Item -ItemType Directory -Path $stage -Force | Out-Null
 
-          # Use only the official Model 2 INI as the baseline. GUI and its private
-          # dependencies are intentionally not part of the emulator runtime package.
+          # Locate the official Model 2 package by GameId=25 and copy that entire
+          # directory unchanged as the distribution baseline. This means users do
+          # not need a separate FFB Arcade Plugin installation just to get its GUI
+          # or companion runtime files.
           $m2Ini = Get-ChildItem -Path $upstream -Recurse -Filter 'FFBPlugin.ini' |
             Where-Object {
               $text = Get-Content $_.FullName -Raw
@@ -74,19 +76,23 @@ jobs:
             } |
             Select-Object -First 1
           if ($null -eq $m2Ini) { throw 'Could not locate official Model 2 FFBPlugin.ini in upstream 2.0.0.53 package' }
-          Copy-Item $m2Ini.FullName (Join-Path $stage 'FFBPlugin.ini') -Force
 
-          # Generic DD v2 plugin.
+          $m2Source = $m2Ini.Directory.FullName
+          Write-Host "Official Model 2 baseline: $m2Source"
+          Copy-Item (Join-Path $m2Source '*') $stage -Recurse -Force
+
+          # Overlay only the files intentionally changed by this branch.
           Copy-Item (Join-Path $built 'dinput8.dll') (Join-Path $stage 'dinput8.dll') -Force
 
-          # Matching Win32 SDL2 runtime.
           $sdl = Get-ChildItem -Path 'packages' -Recurse -Filter 'SDL2.dll' |
             Where-Object { $_.FullName -match '(?i)(x86|win32)' } |
             Select-Object -First 1
           if ($null -eq $sdl) { throw 'Win32 SDL2.dll was not found in restored NuGet packages' }
           Copy-Item $sdl.FullName (Join-Path $stage 'SDL2.dll') -Force
 
-          # Add Generic DD v2 settings while preserving the official Model 2 input keys.
+          # Preserve every official Model 2 setting/input key, then append the
+          # manufacturer-neutral Modern FFB settings and all supported game-family
+          # profiles. All variants of each family inherit the matching profile.
           $iniPath = Join-Path $stage 'FFBPlugin.ini'
           $ini = Get-Content $iniPath -Raw
           if ($ini -notmatch '(?m)^Model2ModernFFB=') {
@@ -115,25 +121,53 @@ jobs:
           }
           [System.IO.File]::WriteAllText($iniPath, $ini)
 
-      - name: Verify minimal Model 2 package
+      - name: Verify full Model 2 package and game coverage
         shell: pwsh
         run: |
-          $stage = 'Package.Model2.GenericDD.Minimal'
-          $required = @('dinput8.dll','SDL2.dll','FFBPlugin.ini')
-          $files = Get-ChildItem $stage -File
+          $stage = 'Package.Model2.GenericDD.Full'
+          $required = @(
+            'dinput8.dll','SDL2.dll','FFBPlugin.ini','FFBPluginGUI.exe',
+            'FFBPluginReadme.txt','MetroFramework.dll'
+          )
           foreach ($name in $required) {
-            if (!(Test-Path (Join-Path $stage $name))) { throw "Required runtime file missing: $name" }
+            if (!(Test-Path (Join-Path $stage $name))) { throw "Required official Model 2 file missing: $name" }
           }
-          if ($files.Count -ne 3) { throw "Minimal package must contain exactly 3 files; found $($files.Count)" }
+
           if (-not (Select-String -Path (Join-Path $stage 'FFBPlugin.ini') -Pattern '^\s*GameId\s*=\s*25\s*$' -Quiet)) { throw 'Model 2 GameId missing' }
           if (-not (Select-String -Path (Join-Path $stage 'FFBPlugin.ini') -Pattern '^\[Model2Modern\]$' -Quiet)) { throw 'Model2Modern section missing' }
-          Write-Host 'Minimal package contents:'
-          $files | ForEach-Object { Write-Host $_.Name }
 
-      - name: Upload minimal Model 2 build
+          $profiles = @('SegaRally','Daytona','Indy500','STCC','OverRev','SuperGT')
+          foreach ($profile in $profiles) {
+            if (-not (Select-String -Path (Join-Path $stage 'FFBPlugin.ini') -SimpleMatch "[Model2Modern.$profile]" -Quiet)) {
+              throw "Modern FFB profile missing: $profile"
+            }
+          }
+
+          # Guard the current upstream Model 2 game coverage. These are the twenty
+          # window titles handled by M2Emulator.cpp; all must remain present.
+          $source = Get-Content 'Game Files\M2Emulator.cpp' -Raw
+          $titles = @(
+            'Sega Rally Championship','Sega Rally Championship (Rev B)',"Sega Rally Pro Drivin'",
+            'Daytona USA',"Daytona USA '93 Edition",'Daytona USA (Saturn Ads)','Daytona USA Special Edition',
+            'Daytona USA Turbo','Daytona USA Turbo (Rev A)','Daytona USA: GTX 2004','Daytona USA: To The Maxx',
+            'Indianapolis 500 (Rev A, Deluxe)','Indianapolis 500 (Rev A, Twin, Newer rev)',
+            'Indianapolis 500 (Rev A, Twin, Older rev)','Sega Touring Car Championship',
+            'Sega Touring Car Championship (Rev A)','Sega Touring Car Championship (Rev B)',
+            'Over Rev','Over Rev (Model 2B)','Super GT 24h'
+          )
+          foreach ($title in $titles) {
+            if (-not $source.Contains($title)) { throw "Model 2 supported title missing from source: $title" }
+          }
+
+          Write-Host 'Full official-style package contents:'
+          Get-ChildItem $stage -Recurse | ForEach-Object {
+            $_.FullName.Substring((Resolve-Path $stage).Path.Length + 1)
+          } | Sort-Object
+
+      - name: Upload full Model 2 build
         uses: actions/upload-artifact@v4
         with:
-          name: Model2-Modern-FFB-Generic-DD-Minimal-Win32
-          path: Package.Model2.GenericDD.Minimal/
+          name: Model2-Modern-FFB-Generic-DD-Full-Win32
+          path: Package.Model2.GenericDD.Full/
           if-no-files-found: error
           retention-days: 30
