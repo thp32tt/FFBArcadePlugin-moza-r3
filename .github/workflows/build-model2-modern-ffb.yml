@@ -11,7 +11,9 @@ permissions:
 
 jobs:
   build-win32-release:
-    runs-on: windows-latest
+    # Upstream project targets the VS2022 v143 toolset and uses ATL headers.
+    # Pin the runner so windows-latest moving to VS2026 does not drop that environment.
+    runs-on: windows-2022
 
     steps:
       - name: Checkout
@@ -19,6 +21,8 @@ jobs:
 
       - name: Setup MSBuild
         uses: microsoft/setup-msbuild@v2
+        with:
+          vs-version: '[17.0,18.0)'
 
       - name: Setup NuGet
         uses: nuget/setup-nuget@v2
