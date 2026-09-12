@@ -1,3 +1,6 @@
+#ifndef NOMINMAX
+#define NOMINMAX
+#endif
 #include <Windows.h>
 #include <iostream>
 #include <fstream>
@@ -739,10 +742,19 @@ static void Model2ProcessCommand(UINT8 raw, Model2ModernCommand command, double 
         break;
 
     case M2CMD_UNCENTERING:
-        if (Model2NativePeriodicAvailable())
-            Model2OutputNativePeriodic(strength);
-        else
+        if (model2Global.periodicMode == 2)
+        {
+            // Forced generic ConstantForce pulse mode. No vendor detection.
             Model2OutputPeriodicFallback(strength);
+        }
+        else if (model2Global.periodicMode != 3)
+        {
+            if (Model2NativePeriodicAvailable())
+                Model2OutputNativePeriodic(strength);
+            else if (model2Global.periodicMode == 0)
+                Model2OutputPeriodicFallback(strength);
+            // periodicMode == 1 is Native-only: do not silently fall back.
+        }
         Model2OutputRumble(strength, strength);
         break;
 
