@@ -1,0 +1,48 @@
+name: Build Model 2 Modern FFB
+
+on:
+  push:
+    branches:
+      - model2-modern-ffb
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+jobs:
+  build-win32-release:
+    runs-on: windows-latest
+
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Setup MSBuild
+        uses: microsoft/setup-msbuild@v2
+
+      - name: Setup NuGet
+        uses: nuget/setup-nuget@v2
+        with:
+          nuget-version: latest
+
+      - name: Restore NuGet packages
+        run: nuget restore Dinput8Wrapper.sln -NonInteractive
+
+      - name: Build Win32 Release
+        run: msbuild Dinput8Wrapper.sln /m /p:Configuration=Release /p:Platform=x86 /verbosity:minimal
+
+      - name: Verify Model 2 package
+        shell: pwsh
+        run: |
+          $path = 'Release.Win32\M2Emulator'
+          if (!(Test-Path "$path\dinput8.dll")) { throw 'dinput8.dll was not generated' }
+          if (!(Test-Path "$path\FFBPlugin.ini")) { throw 'M2Emulator FFBPlugin.ini was not generated' }
+          Get-ChildItem $path | Format-Table Name, Length
+
+      - name: Upload Model 2 build
+        uses: actions/upload-artifact@v4
+        with:
+          name: Model2-Modern-FFB-Win32
+          path: Release.Win32/M2Emulator/
+          if-no-files-found: error
+          retention-days: 30
