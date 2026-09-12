@@ -24,8 +24,6 @@ jobs:
           from pathlib import Path
           import re
 
-          # 1) Keep the real Helpers pointer in the Model 2 input worker and allow
-          #    Input Support to be read from the current INI instead of only DLL load.
           p = Path('Game Files/M2Emulator.cpp')
           s = p.read_text(encoding='utf-8')
           s = s.replace('static int ThreadLoop()\n{', 'static int ThreadLoop(Helpers* helpers)\n{')
@@ -45,9 +43,6 @@ jobs:
           s = s.replace(old, new, 1)
           p.write_text(s, encoding='utf-8', newline='\n')
 
-          # 2) Refresh Sega Rally axis/button mappings at startup and once per second.
-          #    Upstream stores these as static DLL-load snapshots, so GUI changes can
-          #    otherwise appear to save correctly but never reach the running input loop.
           p = Path('Game Files/M2EmulatorSegaRallyInputs.cpp')
           s = p.read_text(encoding='utf-8')
           fn_marker = 'void M2EmulatorSegaRallyInputsEnabled(Helpers* helpers)\n'
@@ -72,13 +67,10 @@ jobs:
               assert wait_marker in s
               s = s.replace(wait_marker, wait_repl, 1)
 
-          # Correct the SDL union member used by the button-number setup helper.
           s = s.replace('if (e.jaxis.which == joystick_index1 || e.jaxis.which == joystick_index2)\n\t\t\t\t{\n\t\t\t\t\tif (e.jbutton.button >= 0)',
                         'if (e.jbutton.which == joystick_index1 || e.jbutton.which == joystick_index2)\n\t\t\t\t{\n\t\t\t\t\tif (e.jbutton.button >= 0)', 1)
           p.write_text(s, encoding='utf-8', newline='\n')
 
-          # 3) When telemetry is enabled, log every changed Sega Rally raw drive-board
-          #    byte, including values outside the currently decoded left/right ranges.
           p = Path('Common Files/Game.cpp')
           s = p.read_text(encoding='utf-8')
           state_marker = 'static UINT8 model2LastRaw = 0;\n'
@@ -93,18 +85,11 @@ jobs:
               s = s.replace(observe_marker, observe_repl, 1)
           p.write_text(s, encoding='utf-8', newline='\n')
 
-          # 4) The official Model 2 runtime only ships MetroFramework.dll. Do not fail
-          #    future complete builds on GUI design-time assemblies that are not shipped.
-          p = Path('.github/workflows/build-model2-modern-ffb.yml')
-          s = p.read_text(encoding='utf-8')
-          s = s.replace("            'MetroFramework.dll','MetroFramework.Fonts.dll','MetroFramework.Design.dll',\n", "            'MetroFramework.dll',\n")
-          p.write_text(s, encoding='utf-8', newline='\n')
-
-      - name: Commit patch
+      - name: Commit source patch
         run: |
           git config user.name "github-actions[bot]"
           git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
-          git add "Game Files/M2Emulator.cpp" "Game Files/M2EmulatorSegaRallyInputs.cpp" "Common Files/Game.cpp" .github/workflows/build-model2-modern-ffb.yml
+          git add "Game Files/M2Emulator.cpp" "Game Files/M2EmulatorSegaRallyInputs.cpp" "Common Files/Game.cpp"
           git diff --cached --check
           git commit -m "Fix Model 2 Sega Rally input mapping and add collision telemetry"
           git push origin HEAD:model2-modern-ffb-v2
