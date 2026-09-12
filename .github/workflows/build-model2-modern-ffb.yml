@@ -79,8 +79,8 @@ jobs:
           Copy-Item (Join-Path $m2Source '*') $stage -Recurse -Force
 
           # The GUI can be shared at a parent level in upstream packages. Ensure the
-          # executable and all managed companion DLLs are present regardless of layout.
-          foreach ($name in @('FFBPluginGUI.exe','FFBPluginGUI.exe.config','MetroFramework.dll','MetroFramework.Fonts.dll','MetroFramework.Design.dll')) {
+          # executable and runtime companion DLL are present regardless of layout.
+          foreach ($name in @('FFBPluginGUI.exe','FFBPluginGUI.exe.config','MetroFramework.dll')) {
             if (!(Test-Path (Join-Path $stage $name))) {
               $file = Get-ChildItem -Path $upstream -Recurse -File -Filter $name | Select-Object -First 1
               if ($null -ne $file) { Copy-Item $file.FullName (Join-Path $stage $name) -Force }
@@ -147,8 +147,7 @@ jobs:
           $stage = 'Package.Model2.GenericDD'
           $required = @(
             'dinput8.dll','SDL2.dll','FFBPlugin.ini','FFBPluginGUI.exe',
-            'MetroFramework.dll','MetroFramework.Fonts.dll','MetroFramework.Design.dll',
-            'MODEL2_MODERN_FFB.md','README-GENERIC-DD.txt'
+            'MetroFramework.dll','MODEL2_MODERN_FFB.md','README-GENERIC-DD.txt'
           )
           foreach ($name in $required) {
             if (!(Test-Path (Join-Path $stage $name))) { throw "Required package file missing: $name" }
