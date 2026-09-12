@@ -100,6 +100,10 @@ ConstantGain=100
 
 Per-game sections may also override `SpringGain`, `FrictionGain`, `PeriodicGain`, `RumbleGain`, `Gamma`, `BuildRate`, `ReversalReleaseRate`, `InvertConstant`, and `InvertSpring`.
 
+## Model 2 input support
+
+For wheel buttons, pedals and steering, use `FFBPluginGUI.exe` and enable Model 2 `Input Support` rather than relying on the emulator's legacy Configure Controls capture. The input worker now receives the live plugin helper context, starts when `InputDeviceWheelEnable` becomes enabled, and Sega Rally input bindings are reloaded periodically from `FFBPlugin.ini`. This allows GUI mapping changes to reach the running plugin instead of remaining stuck at the DLL-load snapshot.
+
 ## Command decoder safety fix
 
 The upstream generic Spring range includes raw bytes `0x0A..0x17` while its historical strength expression `(ff - 15) / 8.0` becomes negative for `0x0A..0x0E`. The old condition backend converts a negative coefficient into full-scale positive spring force. v2 preserves the upstream raw-byte range but clamps those negative magnitudes to zero so malformed/low command values cannot become an unintended maximum spring.
@@ -107,6 +111,8 @@ The upstream generic Spring range includes raw bytes `0x0A..0x17` while its hist
 ## Telemetry
 
 Set `Telemetry=1` to create `Model2ModernFFB.log`. It records the selected game profile, raw FFB byte, decoded command, decoded strength and current smoothed ConstantForce state. SDL haptic capability flags are also reported through the debug output path.
+
+For Sega Rally, telemetry additionally records every changed raw drive-board byte as `srally-raw tick=... value=0x..`, including bytes outside the currently decoded left/right torque ranges. This is intended to distinguish a missing decoder mapping from a collision event that simply is not exposed as a distinct drive-board command by the game.
 
 This is intended for hardware reports from any DD wheel. Useful reports should include wheel/base model, driver/firmware, game, relevant INI profile and the telemetry log.
 
