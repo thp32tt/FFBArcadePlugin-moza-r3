@@ -2,15 +2,69 @@
 #include <Windows.h>
 #include "MinHook.h"
 
+// Trigger slot wrappers keep the original EffectTriggers call syntax while
+// allowing the Model 2 fork to route those five effects through an optional
+// modern-DD processing layer. For every non-Model-2 game (and when the mode is
+// disabled) they call the original function pointers unchanged.
+typedef void(*EffectConstantFunction)(int direction, double strength);
+typedef void(*EffectSingleStrengthFunction)(double strength);
+typedef void(*EffectSineFunction)(UINT16 period, UINT16 fadePeriod, double strength);
+typedef void(*EffectRumbleFunction)(double lowfrequency, double highfrequency, double length);
+
+class EffectConstantTriggerSlot {
+public:
+	EffectConstantTriggerSlot() : function(NULL) {}
+	EffectConstantTriggerSlot& operator=(EffectConstantFunction value);
+	void operator()(int direction, double strength) const;
+	operator EffectConstantFunction() const { return function; }
+	EffectConstantFunction function;
+};
+
+class EffectSpringTriggerSlot {
+public:
+	EffectSpringTriggerSlot() : function(NULL) {}
+	EffectSpringTriggerSlot& operator=(EffectSingleStrengthFunction value);
+	void operator()(double strength) const;
+	operator EffectSingleStrengthFunction() const { return function; }
+	EffectSingleStrengthFunction function;
+};
+
+class EffectFrictionTriggerSlot {
+public:
+	EffectFrictionTriggerSlot() : function(NULL) {}
+	EffectFrictionTriggerSlot& operator=(EffectSingleStrengthFunction value);
+	void operator()(double strength) const;
+	operator EffectSingleStrengthFunction() const { return function; }
+	EffectSingleStrengthFunction function;
+};
+
+class EffectSineTriggerSlot {
+public:
+	EffectSineTriggerSlot() : function(NULL) {}
+	EffectSineTriggerSlot& operator=(EffectSineFunction value);
+	void operator()(UINT16 period, UINT16 fadePeriod, double strength) const;
+	operator EffectSineFunction() const { return function; }
+	EffectSineFunction function;
+};
+
+class EffectRumbleTriggerSlot {
+public:
+	EffectRumbleTriggerSlot() : function(NULL) {}
+	EffectRumbleTriggerSlot& operator=(EffectRumbleFunction value);
+	void operator()(double lowfrequency, double highfrequency, double length) const;
+	operator EffectRumbleFunction() const { return function; }
+	EffectRumbleFunction function;
+};
+
 // struct
 struct EffectTriggers {
-	void(*Constant)(int direction, double strength);
-	void(*Spring)(double strength);
-	void(*Friction)(double strength);
-	void(*Sine)(UINT16 period, UINT16 fadePeriod, double strength);
+	EffectConstantTriggerSlot Constant;
+	EffectSpringTriggerSlot Spring;
+	EffectFrictionTriggerSlot Friction;
+	EffectSineTriggerSlot Sine;
 	void(*SineDevice2)(UINT16 period, UINT16 fadePeriod, double strength);
 	void(*SineDevice3)(UINT16 period, UINT16 fadePeriod, double strength);
-	void(*Rumble)(double lowfrequency, double highfrequency, double length);
+	EffectRumbleTriggerSlot Rumble;
 	void(*RumbleDevice2)(double lowfrequency, double highfrequency, double length);
 	void(*RumbleDevice3)(double lowfrequency, double highfrequency, double length);
 	void(*RumbleTriggers)(double lefttrigger, double righttrigger, double length);
