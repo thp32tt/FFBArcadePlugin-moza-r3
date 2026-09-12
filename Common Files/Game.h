@@ -2,10 +2,9 @@
 #include <Windows.h>
 #include "MinHook.h"
 
-// Trigger slot wrappers keep the original EffectTriggers call syntax while
-// allowing the Model 2 fork to route those five effects through an optional
-// modern-DD processing layer. For every non-Model-2 game (and when the mode is
-// disabled) they call the original function pointers unchanged.
+// Trigger-slot wrappers preserve the upstream call syntax while allowing the
+// Model 2 modern-DD path to own all effects it needs. Non-Model-2 games and
+// Model 2 with the modern path disabled are forwarded unchanged.
 typedef void(*EffectConstantFunction)(int direction, double strength);
 typedef void(*EffectSingleStrengthFunction)(double strength);
 typedef void(*EffectSineFunction)(UINT16 period, UINT16 fadePeriod, double strength);
@@ -13,100 +12,108 @@ typedef void(*EffectRumbleFunction)(double lowfrequency, double highfrequency, d
 
 class EffectConstantTriggerSlot {
 public:
-	EffectConstantTriggerSlot() : function(NULL) {}
-	EffectConstantTriggerSlot& operator=(EffectConstantFunction value);
-	void operator()(int direction, double strength) const;
-	operator EffectConstantFunction() const { return function; }
-	EffectConstantFunction function;
+    EffectConstantTriggerSlot() : function(NULL) {}
+    EffectConstantTriggerSlot& operator=(EffectConstantFunction value);
+    void operator()(int direction, double strength) const;
+    operator EffectConstantFunction() const { return function; }
+    EffectConstantFunction function;
 };
 
 class EffectSpringTriggerSlot {
 public:
-	EffectSpringTriggerSlot() : function(NULL) {}
-	EffectSpringTriggerSlot& operator=(EffectSingleStrengthFunction value);
-	void operator()(double strength) const;
-	operator EffectSingleStrengthFunction() const { return function; }
-	EffectSingleStrengthFunction function;
+    EffectSpringTriggerSlot() : function(NULL) {}
+    EffectSpringTriggerSlot& operator=(EffectSingleStrengthFunction value);
+    void operator()(double strength) const;
+    operator EffectSingleStrengthFunction() const { return function; }
+    EffectSingleStrengthFunction function;
 };
 
 class EffectFrictionTriggerSlot {
 public:
-	EffectFrictionTriggerSlot() : function(NULL) {}
-	EffectFrictionTriggerSlot& operator=(EffectSingleStrengthFunction value);
-	void operator()(double strength) const;
-	operator EffectSingleStrengthFunction() const { return function; }
-	EffectSingleStrengthFunction function;
+    EffectFrictionTriggerSlot() : function(NULL) {}
+    EffectFrictionTriggerSlot& operator=(EffectSingleStrengthFunction value);
+    void operator()(double strength) const;
+    operator EffectSingleStrengthFunction() const { return function; }
+    EffectSingleStrengthFunction function;
 };
 
 class EffectSineTriggerSlot {
 public:
-	EffectSineTriggerSlot() : function(NULL) {}
-	EffectSineTriggerSlot& operator=(EffectSineFunction value);
-	void operator()(UINT16 period, UINT16 fadePeriod, double strength) const;
-	operator EffectSineFunction() const { return function; }
-	EffectSineFunction function;
+    EffectSineTriggerSlot() : function(NULL) {}
+    EffectSineTriggerSlot& operator=(EffectSineFunction value);
+    void operator()(UINT16 period, UINT16 fadePeriod, double strength) const;
+    operator EffectSineFunction() const { return function; }
+    EffectSineFunction function;
 };
 
 class EffectRumbleTriggerSlot {
 public:
-	EffectRumbleTriggerSlot() : function(NULL) {}
-	EffectRumbleTriggerSlot& operator=(EffectRumbleFunction value);
-	void operator()(double lowfrequency, double highfrequency, double length) const;
-	operator EffectRumbleFunction() const { return function; }
-	EffectRumbleFunction function;
+    EffectRumbleTriggerSlot() : function(NULL) {}
+    EffectRumbleTriggerSlot& operator=(EffectRumbleFunction value);
+    void operator()(double lowfrequency, double highfrequency, double length) const;
+    operator EffectRumbleFunction() const { return function; }
+    EffectRumbleFunction function;
+};
+
+class EffectConditionTriggerSlot {
+public:
+    EffectConditionTriggerSlot() : function(NULL) {}
+    EffectConditionTriggerSlot& operator=(EffectSingleStrengthFunction value);
+    void operator()(double strength) const;
+    operator EffectSingleStrengthFunction() const { return function; }
+    EffectSingleStrengthFunction function;
 };
 
 // struct
 struct EffectTriggers {
-	EffectConstantTriggerSlot Constant;
-	EffectSpringTriggerSlot Spring;
-	EffectFrictionTriggerSlot Friction;
-	EffectSineTriggerSlot Sine;
-	void(*SineDevice2)(UINT16 period, UINT16 fadePeriod, double strength);
-	void(*SineDevice3)(UINT16 period, UINT16 fadePeriod, double strength);
-	EffectRumbleTriggerSlot Rumble;
-	void(*RumbleDevice2)(double lowfrequency, double highfrequency, double length);
-	void(*RumbleDevice3)(double lowfrequency, double highfrequency, double length);
-	void(*RumbleTriggers)(double lefttrigger, double righttrigger, double length);
-	void(*LeftRight)(double smallstrength, double largestrength, double length);
-	void(*LeftRightDevice2)(double smallstrength, double largestrength, double length);
-	void(*Springi)(double strength);
-	void(*Inertia)(double strength);
-	void(*Ramp)(double start, double end, double length);
-	void(*Damper)(double strength);
-	void(*SawtoothUp)(double strength, double length);
-	void(*SawtoothDown)(double strength, double length);
-	void(*Triangle)(double strength, double length);
+    EffectConstantTriggerSlot Constant;
+    EffectSpringTriggerSlot Spring;
+    EffectFrictionTriggerSlot Friction;
+    EffectSineTriggerSlot Sine;
+    void(*SineDevice2)(UINT16 period, UINT16 fadePeriod, double strength);
+    void(*SineDevice3)(UINT16 period, UINT16 fadePeriod, double strength);
+    EffectRumbleTriggerSlot Rumble;
+    void(*RumbleDevice2)(double lowfrequency, double highfrequency, double length);
+    void(*RumbleDevice3)(double lowfrequency, double highfrequency, double length);
+    void(*RumbleTriggers)(double lefttrigger, double righttrigger, double length);
+    void(*LeftRight)(double smallstrength, double largestrength, double length);
+    void(*LeftRightDevice2)(double smallstrength, double largestrength, double length);
+    EffectConditionTriggerSlot Springi;
+    void(*Inertia)(double strength);
+    void(*Ramp)(double start, double end, double length);
+    EffectConditionTriggerSlot Damper;
+    void(*SawtoothUp)(double strength, double length);
+    void(*SawtoothDown)(double strength, double length);
+    void(*Triangle)(double strength, double length);
 };
 
 // classes
 class EffectCollection {
 public:
-	int effect_constant_id;
-	int effect_leftramp_id;
-	int effect_rightramp_id;
-	int effect_friction_id;
-	int effect_leftright_id;
-	int effect_sine_id;
-	int effect_sine_id_device2;
-	int effect_sine_id_device3;
-	int effect_spring_id;
-	int effect_vibration_id;
-	int effect_inertia_id;
-	int effect_ramp_id;
-	int effect_damper_id;
-	int effect_sawtoothup_id;
-	int effect_sawtoothdown_id;
-	int effect_triangle_id;
+    int effect_constant_id;
+    int effect_leftramp_id;
+    int effect_rightramp_id;
+    int effect_friction_id;
+    int effect_leftright_id;
+    int effect_sine_id;
+    int effect_sine_id_device2;
+    int effect_sine_id_device3;
+    int effect_spring_id;
+    int effect_vibration_id;
+    int effect_inertia_id;
+    int effect_ramp_id;
+    int effect_damper_id;
+    int effect_sawtoothup_id;
+    int effect_sawtoothdown_id;
+    int effect_triangle_id;
 };
 
 class EffectConstants {
 public:
-	// constants
-	// Haptic forces are defined by the direction that generates the force
-	// e.g. DIRECTION_FROM_LEFT causes wheel to go right.
-	const int DIRECTION_FROM_LEFT = -1;
-	const int DIRECTION_FROM_RIGHT = 1;
+    // Haptic forces are defined by the direction that generates the force:
+    // DIRECTION_FROM_LEFT causes the wheel to move right.
+    const int DIRECTION_FROM_LEFT = -1;
+    const int DIRECTION_FROM_RIGHT = 1;
 };
 
 #define VK_A 0x41
@@ -148,30 +155,27 @@ public:
 
 class Helpers {
 public:
-	int enableLogging = 0;
-	// helper functions
-	bool fileExists(char *filename);
-	// logging
-	void log(char *msg);
-	void logInt(int value);
-	void logInit(char *msg);
-	void info(const char* format, ...);
-	// reading memory
-	LPVOID GetTranslatedOffset(INT_PTR offset);
-	int ReadInt32(INT_PTR offset, bool isRelativeOffset);
-	UINT8 ReadByte(INT_PTR offset, bool isRelativeOffset);
-	WORD ReadWord(INT_PTR offset, bool isRelativeOffset);
-	float WriteFloat32(INT_PTR offset, float val, bool isRelativeOffset);
-	UINT8 WriteByte(INT_PTR offset, UINT8 val, bool isRelativeOffset);
-	INT_PTR WriteIntPtr(INT_PTR offset, INT_PTR val, bool isRelativeOffset);
-	UINT8 WriteNop(INT_PTR offset, int countBytes, bool isRelativeOffset);
-	WORD WriteWord(INT_PTR offset, WORD val, bool isRelativeOffset);
-	INT_PTR ReadIntPtr(INT_PTR offset, bool isRelativeOffset);
-	long long ReadLong(INT_PTR offset, bool isRelativeOffset);
-	float ReadFloat32(INT_PTR offset, bool isRelativeOffset);
+    int enableLogging = 0;
+    bool fileExists(char *filename);
+    void log(char *msg);
+    void logInt(int value);
+    void logInit(char *msg);
+    void info(const char* format, ...);
+    LPVOID GetTranslatedOffset(INT_PTR offset);
+    int ReadInt32(INT_PTR offset, bool isRelativeOffset);
+    UINT8 ReadByte(INT_PTR offset, bool isRelativeOffset);
+    WORD ReadWord(INT_PTR offset, bool isRelativeOffset);
+    float WriteFloat32(INT_PTR offset, float val, bool isRelativeOffset);
+    UINT8 WriteByte(INT_PTR offset, UINT8 val, bool isRelativeOffset);
+    INT_PTR WriteIntPtr(INT_PTR offset, INT_PTR val, bool isRelativeOffset);
+    UINT8 WriteNop(INT_PTR offset, int countBytes, bool isRelativeOffset);
+    WORD WriteWord(INT_PTR offset, WORD val, bool isRelativeOffset);
+    INT_PTR ReadIntPtr(INT_PTR offset, bool isRelativeOffset);
+    long long ReadLong(INT_PTR offset, bool isRelativeOffset);
+    float ReadFloat32(INT_PTR offset, bool isRelativeOffset);
 };
 
 class Game {
 public:
-	virtual void FFBLoop(EffectConstants *constants, Helpers *helpers, EffectTriggers *triggers);
+    virtual void FFBLoop(EffectConstants *constants, Helpers *helpers, EffectTriggers *triggers);
 };
