@@ -55,9 +55,9 @@ jobs:
           echo "Official Model 2 baseline: ${M2_DIR}"
           cp -a "${M2_DIR}/." Package.Model2.GenericDD/
 
-          # Some releases keep GUI assets at a shared parent level. Fill any missing
-          # GUI/runtime companions from the official archive without altering them.
-          for name in FFBPluginGUI.exe FFBPluginGUI.exe.config MetroFramework.dll MetroFramework.Fonts.dll MetroFramework.Design.dll; do
+          # Keep the official Model 2 folder intact. Only fill GUI files when the
+          # official archive stores them at a shared parent level.
+          for name in FFBPluginGUI.exe FFBPluginGUI.exe.config MetroFramework.dll; do
             if [ ! -f "Package.Model2.GenericDD/${name}" ]; then
               src="$(find /tmp/upstream53 -type f -iname "${name}" | head -n 1 || true)"
               if [ -n "${src}" ]; then cp -f "${src}" "Package.Model2.GenericDD/${name}"; fi
@@ -97,7 +97,10 @@ jobs:
       - name: Verify complete package
         run: |
           set -euxo pipefail
-          for f in dinput8.dll SDL2.dll FFBPlugin.ini FFBPluginGUI.exe MetroFramework.dll MetroFramework.Fonts.dll MetroFramework.Design.dll MODEL2_MODERN_FFB.md README-GENERIC-DD.txt; do
+          # These are the runtime files actually shipped in the official Model 2 package.
+          # MetroFramework.Fonts/Design are compile-time references in the GUI project and
+          # are not present in the official 2.0.0.53 runtime distribution.
+          for f in dinput8.dll SDL2.dll FFBPlugin.ini FFBPluginGUI.exe MetroFramework.dll MODEL2_MODERN_FFB.md README-GENERIC-DD.txt; do
             test -f "Package.Model2.GenericDD/${f}"
           done
           grep -qE '^\[Model2Modern\]\r?$' Package.Model2.GenericDD/FFBPlugin.ini
