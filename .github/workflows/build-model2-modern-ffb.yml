@@ -53,7 +53,7 @@ jobs:
           $guiRoot = Join-Path $env:RUNNER_TEMP 'FFBArcadePluginGUI'
           git clone --depth 1 https://github.com/Boomslangnz/FFBArcadePluginGUI.git $guiRoot
           nuget restore (Join-Path $guiRoot 'FFBPluginGUI.sln') -PackagesDirectory (Join-Path $guiRoot 'packages') -NonInteractive
-          msbuild (Join-Path $guiRoot 'FFBPluginGUI.sln') /m /p:Configuration=Release /p:Platform=Win32 /verbosity:minimal
+          msbuild (Join-Path $guiRoot 'FFBPluginGUI.sln') /m /p:Configuration=Release /p:Platform=x86 /verbosity:minimal
 
       - name: Finalize complete Model 2 package
         shell: pwsh
