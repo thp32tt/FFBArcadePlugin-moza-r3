@@ -44,91 +44,72 @@ jobs:
             [System.IO.File]::WriteAllText((Resolve-Path $projectPath), $project)
           }
 
-      - name: Build plugin Win32 Release
+      - name: Build Generic DD plugin Win32 Release
         run: msbuild Dinput8Wrapper.sln /m /p:Configuration=Release /p:Platform=x86 /verbosity:minimal
 
-      - name: Checkout FFB Plugin GUI
+      - name: Download official upstream 2.0.0.53 distribution
         shell: pwsh
         run: |
-          $guiRoot = Join-Path $env:RUNNER_TEMP 'FFBArcadePluginGUI'
-          git clone --depth 1 https://github.com/Boomslangnz/FFBArcadePluginGUI.git $guiRoot
-          nuget restore (Join-Path $guiRoot 'FFBPluginGUI.sln') -PackagesDirectory (Join-Path $guiRoot 'packages') -NonInteractive
+          $zip = Join-Path $env:RUNNER_TEMP 'FFB.Arcade.Plugin.v2.0.0.53.zip'
+          $dst = Join-Path $env:RUNNER_TEMP 'FFBArcadePlugin-Upstream'
+          $url = 'https://github.com/Boomslangnz/FFBArcadePlugin/releases/download/2.0.0.53/FFB.Arcade.Plugin.v2.0.0.53.zip'
+          curl.exe -L --fail --retry 3 -o $zip $url
+          if ($LASTEXITCODE -ne 0) { throw 'Failed to download official upstream package' }
+          Expand-Archive -Path $zip -DestinationPath $dst -Force
 
-      - name: Build FFB Plugin GUI with diagnostics
-        id: gui_build
-        continue-on-error: true
+      - name: Assemble complete Model 2 Generic DD package
         shell: pwsh
         run: |
-          $guiRoot = Join-Path $env:RUNNER_TEMP 'FFBArcadePluginGUI'
-          $log = Join-Path $env:RUNNER_TEMP 'ffbplugin-gui-build.log'
-          & msbuild (Join-Path $guiRoot 'FFBPluginGUI.sln') /m /p:Configuration=Release /p:Platform=x86 /verbosity:diagnostic /fl "/flp:logfile=$log;verbosity=diagnostic"
-          $code = $LASTEXITCODE
-          "exit_code=$code" | Set-Content (Join-Path $env:RUNNER_TEMP 'ffbplugin-gui-build-exit.txt')
-          if ($code -ne 0) { exit $code }
+          $built = Resolve-Path 'Release.Win32\M2Emulator'
+          $upstream = Join-Path $env:RUNNER_TEMP 'FFBArcadePlugin-Upstream'
+          $stage = Join-Path $env:GITHUB_WORKSPACE 'Package.Model2.GenericDD'
+          New-Item -ItemType Directory -Path $stage -Force | Out-Null
 
-      - name: Upload GUI build diagnostics
-        if: always()
-        uses: actions/upload-artifact@v4
-        with:
-          name: FFBPluginGUI-build-diagnostics
-          path: |
-            ${{ runner.temp }}/ffbplugin-gui-build.log
-            ${{ runner.temp }}/ffbplugin-gui-build-exit.txt
-          if-no-files-found: warn
-          retention-days: 7
+          # Locate the official Model 2 package by its GameId, then use that entire
+          # directory as the baseline so no runtime/GUI helper file is omitted.
+          $m2Ini = Get-ChildItem -Path $upstream -Recurse -Filter 'FFBPlugin.ini' |
+            Where-Object {
+              $text = Get-Content $_.FullName -Raw
+              $text -match '(?m)^\s*GameId\s*=\s*25\s*$'
+            } |
+            Select-Object -First 1
+          if ($null -eq $m2Ini) { throw 'Could not locate official Model 2 FFBPlugin.ini in upstream 2.0.0.53 package' }
+          $m2Source = $m2Ini.Directory.FullName
+          Write-Host "Official Model 2 baseline: $m2Source"
+          Copy-Item (Join-Path $m2Source '*') $stage -Recurse -Force
 
-      - name: Require GUI build success
-        if: steps.gui_build.outcome != 'success'
-        shell: pwsh
-        run: throw 'FFBPluginGUI build failed; diagnostics artifact uploaded.'
+          # The GUI can be shared at a parent level in upstream packages. Ensure the
+          # executable and all managed companion DLLs are present regardless of layout.
+          foreach ($name in @('FFBPluginGUI.exe','FFBPluginGUI.exe.config','MetroFramework.dll','MetroFramework.Fonts.dll','MetroFramework.Design.dll')) {
+            if (!(Test-Path (Join-Path $stage $name))) {
+              $file = Get-ChildItem -Path $upstream -Recurse -File -Filter $name | Select-Object -First 1
+              if ($null -ne $file) { Copy-Item $file.FullName (Join-Path $stage $name) -Force }
+            }
+          }
 
-      - name: Finalize complete Model 2 package
-        shell: pwsh
-        run: |
-          $path = 'Release.Win32\M2Emulator'
-          if (!(Test-Path $path)) { throw 'M2Emulator output folder was not generated' }
+          # Overlay the Generic DD v2 plugin built from this branch.
+          Copy-Item (Join-Path $built 'dinput8.dll') (Join-Path $stage 'dinput8.dll') -Force
 
+          # Prefer the restored x86 SDL2 runtime matching this source build.
           $sdl = Get-ChildItem -Path 'packages' -Recurse -Filter 'SDL2.dll' |
             Where-Object { $_.FullName -match '(?i)(x86|win32)' } |
             Select-Object -First 1
           if ($null -eq $sdl) { throw 'Win32 SDL2.dll was not found in restored NuGet packages' }
-          Copy-Item $sdl.FullName "$path\SDL2.dll" -Force
+          Copy-Item $sdl.FullName (Join-Path $stage 'SDL2.dll') -Force
 
-          $guiRoot = Join-Path $env:RUNNER_TEMP 'FFBArcadePluginGUI'
-          $guiExe = Get-ChildItem -Path $guiRoot -Recurse -Filter 'FFBPluginGUI.exe' |
-            Where-Object { $_.FullName -match '(?i)Release' } |
-            Select-Object -First 1
-          if ($null -eq $guiExe) { throw 'FFBPluginGUI.exe was not generated' }
-          Copy-Item $guiExe.FullName "$path\FFBPluginGUI.exe" -Force
-
-          $guiConfig = "$($guiExe.FullName).config"
-          if (Test-Path $guiConfig) { Copy-Item $guiConfig "$path\FFBPluginGUI.exe.config" -Force }
-
-          foreach ($name in @('MetroFramework.dll', 'MetroFramework.Fonts.dll', 'MetroFramework.Design.dll')) {
-            $dependency = Join-Path $guiRoot $name
-            if (!(Test-Path $dependency)) { throw "$name is missing from FFBArcadePluginGUI" }
-            Copy-Item $dependency "$path\$name" -Force
-          }
-
-          if (Test-Path 'MODEL2_MODERN_FFB.md') { Copy-Item 'MODEL2_MODERN_FFB.md' "$path\MODEL2_MODERN_FFB.md" -Force }
-          if (Test-Path 'LICENSE') { Copy-Item 'LICENSE' "$path\LICENSE-FFBArcadePlugin.txt" -Force }
-          $guiLicense = Join-Path $guiRoot 'LICENSE'
-          if (Test-Path $guiLicense) { Copy-Item $guiLicense "$path\LICENSE-FFBPluginGUI.txt" -Force }
-
-          $iniPath = "$path\FFBPlugin.ini"
+          # Add Generic DD v2 settings while preserving all official GUI/Input settings.
+          $iniPath = Join-Path $stage 'FFBPlugin.ini'
           $ini = Get-Content $iniPath -Raw
-
           if ($ini -notmatch '(?m)^Model2ModernFFB=') {
             $compat = @(
-              'Model2ModernFFB=1', 'Model2ModernFFBConstantGain=100', 'Model2ModernFFBSpringGain=45',
-              'Model2ModernFFBFrictionGain=35', 'Model2ModernFFBSineGain=30',
-              'Model2ModernFFBRumbleGain=20', 'Model2ModernFFBGamma=100'
+              'Model2ModernFFB=1','Model2ModernFFBConstantGain=100','Model2ModernFFBSpringGain=45',
+              'Model2ModernFFBFrictionGain=35','Model2ModernFFBSineGain=30',
+              'Model2ModernFFBRumbleGain=20','Model2ModernFFBGamma=100'
             ) -join "`r`n"
             $ini = [regex]::Replace($ini, '(?m)^\[Settings\]\r?\n', "[Settings]`r`n$compat`r`n", 1)
           }
-
           if ($ini -notmatch '(?m)^\[Model2Modern\]$') {
-            $v2Lines = @(
+            $v2 = @(
               '', '[Model2Modern]', 'Enabled=1', 'ConstantGain=100', 'SpringGain=45',
               'FrictionGain=35', 'PeriodicGain=30', 'RumbleGain=20', 'Gamma=100',
               'BuildRate=18', 'ReversalReleaseRate=40', 'SoftClipKnee=75', 'SoftClipLimit=135',
@@ -140,37 +121,47 @@ jobs:
               '[Model2Modern.STCC]', 'ConstantGain=100', '',
               '[Model2Modern.OverRev]', 'ConstantGain=100', '',
               '[Model2Modern.SuperGT]', 'ConstantGain=100'
-            )
-            $ini = $ini.TrimEnd() + "`r`n" + ($v2Lines -join "`r`n") + "`r`n"
+            ) -join "`r`n"
+            $ini = $ini.TrimEnd() + "`r`n" + $v2 + "`r`n"
           }
-          [System.IO.File]::WriteAllText((Resolve-Path $iniPath), $ini)
+          [System.IO.File]::WriteAllText($iniPath, $ini)
 
-          $packageReadme = @(
+          Copy-Item 'MODEL2_MODERN_FFB.md' (Join-Path $stage 'MODEL2_MODERN_FFB.md') -Force
+          if (Test-Path 'LICENSE') { Copy-Item 'LICENSE' (Join-Path $stage 'LICENSE-FFBArcadePlugin.txt') -Force }
+
+          $readme = @(
             'Model 2 Modern FFB - Generic DD Complete Package', '',
-            'Copy all files in this folder next to emulator_multicpu.exe.',
-            'Run FFBPluginGUI.exe to select the FFB device and configure Model 2 Input Support.',
-            'When Input Support is enabled, configure steering, pedals and buttons in FFBPluginGUI instead of Model 2 native control assignment.', '',
-            'Runtime requirements:', '- Microsoft Visual C++ 2019/2022 Redistributable (x86)',
-            '- .NET Framework 4.7.2 or later for FFBPluginGUI', '',
-            'Modern DD settings are in the [Model2Modern] section of FFBPlugin.ini.',
-            'Set Telemetry=1 for Model 2 raw FFB diagnostics.'
+            'Baseline runtime and GUI files come from the official FFB Arcade Plugin 2.0.0.53 distribution.',
+            'dinput8.dll and [Model2Modern] settings are replaced by this Generic DD v2 branch.', '',
+            'INSTALL: Copy every file/folder in this package next to emulator_multicpu.exe.',
+            'INPUT: Run FFBPluginGUI.exe, choose Model 2 Emulator, enable Input Support, then map wheel/pedals/buttons in the GUI.',
+            'Do not use Model 2 native Configure Controls for wheel buttons when Input Support is enabled.', '',
+            'Runtime: Microsoft Visual C++ 2019/2022 Redistributable x86 and .NET Framework 4.7.2+.',
+            'Diagnostics: set Telemetry=1 under [Model2Modern].'
           ) -join "`r`n"
-          Set-Content -Path "$path\README-GENERIC-DD.txt" -Value $packageReadme -Encoding ASCII
+          Set-Content -Path (Join-Path $stage 'README-GENERIC-DD.txt') -Value $readme -Encoding ASCII
 
       - name: Verify complete Model 2 package
         shell: pwsh
         run: |
-          $path = 'Release.Win32\M2Emulator'
-          $required = @('dinput8.dll','SDL2.dll','FFBPlugin.ini','FFBPluginReadme.txt','FFBPluginGUI.exe','MetroFramework.dll','MetroFramework.Fonts.dll','MetroFramework.Design.dll','MODEL2_MODERN_FFB.md','README-GENERIC-DD.txt')
-          foreach ($name in $required) { if (!(Test-Path "$path\$name")) { throw "Required package file missing: $name" } }
-          if (-not (Select-String -Path "$path\FFBPlugin.ini" -Pattern '^Model2ModernFFB=1$' -Quiet)) { throw 'Modern FFB compatibility flag missing' }
-          if (-not (Select-String -Path "$path\FFBPlugin.ini" -Pattern '^\[Model2Modern\]$' -Quiet)) { throw 'Model2Modern v2 section missing' }
-          Get-ChildItem $path | Sort-Object Name | Format-Table Name, Length
+          $stage = 'Package.Model2.GenericDD'
+          $required = @(
+            'dinput8.dll','SDL2.dll','FFBPlugin.ini','FFBPluginGUI.exe',
+            'MetroFramework.dll','MetroFramework.Fonts.dll','MetroFramework.Design.dll',
+            'MODEL2_MODERN_FFB.md','README-GENERIC-DD.txt'
+          )
+          foreach ($name in $required) {
+            if (!(Test-Path (Join-Path $stage $name))) { throw "Required package file missing: $name" }
+          }
+          if (-not (Select-String -Path (Join-Path $stage 'FFBPlugin.ini') -Pattern '^\s*GameId\s*=\s*25\s*$' -Quiet)) { throw 'Model 2 GameId missing' }
+          if (-not (Select-String -Path (Join-Path $stage 'FFBPlugin.ini') -Pattern '^\[Model2Modern\]$' -Quiet)) { throw 'Model2Modern section missing' }
+          Write-Host 'Complete package contents:'
+          Get-ChildItem $stage -Recurse | ForEach-Object { $_.FullName.Substring((Resolve-Path $stage).Path.Length + 1) } | Sort-Object
 
       - name: Upload complete Model 2 build
         uses: actions/upload-artifact@v4
         with:
           name: Model2-Modern-FFB-Generic-DD-Complete-Win32
-          path: Release.Win32/M2Emulator/
+          path: Package.Model2.GenericDD/
           if-no-files-found: error
           retention-days: 30
